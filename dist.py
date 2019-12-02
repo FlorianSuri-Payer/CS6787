@@ -127,13 +127,13 @@ class SimuParallelSGDTrainer:
                 weights = self.server.wait_and_consume_weights(1)[0]
                 print(weights)
             self.model.set_weights(weights)
-            print('done itr')
-        print('done train')
 
 def recv_weights(sock, server):
     while server.is_running:
         print('waiting to recv weights...')
         b = sock.recv(4)
+        if len(b) == 0:
+            break
         n = int.from_bytes(b, byteorder='big')
         print('receiving %d bytes' % n)
         data = bytearray()
@@ -145,6 +145,8 @@ def recv_weights(sock, server):
         bio = io.BytesIO(data)
         weights = numpy.load(bio, allow_pickle=True)
         server.received_weights(weights)
+
+    print('thread done')
 
 class WeightReceiverHandler(socketserver.BaseRequestHandler):
 
@@ -217,15 +219,18 @@ class Server(socketserver.ThreadingTCPServer):
                 print('sending to %d' % idx)
                 self.connections[idx].sendall(b)
                 self.connections[idx].sendall(bs.getbuffer())
+
+    def end(self):
+        for i, c in self.connections.items():
+            c.shutdown(socket.SHUT_WR)
+        self.shutdown()
         
 def connect_to_worker(config, i, idx):
     host, port = config['workers'][i].split(':')
     port = int(port)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host, port))
-    print(idx)
     b = idx.to_bytes(4, byteorder='big')
-    print(b)
     sock.sendall(b)
 
     return sock
@@ -256,8 +261,10 @@ def main(args):
         tr = SimuParallelSGDTrainer(config, args.worker_idx, server)
         tr.train()
 
-        server.shutdown()
+        print('done training')
+
         server.is_running = False
+        server.end()
         for ti in threads:
             ti.join()
         #export_stats(history)
