@@ -251,6 +251,10 @@ def pipeline(df, train=False):
     else:
         return features
 
+def transform_label(label):
+    inter = np.apply_along_axis(lambda x: x+99, 0, label)
+    return tf.keras.utils.to_categorical(inter, 199)
+
 def Heavi_transform_label(y):
     Y_train=np.zeros((y.shape[0],199))
     for i,yard in enumerate(y):
@@ -272,15 +276,19 @@ def process_data(test_size = 1000):
 
     print(features.head())
     X = normalizeData(features)
-    Y = Heavi_transform_label(labels)
+    Y_heavi = Heavi_transform_label(labels)
+    Y_cat = transform_label(labels)
 
     pd.DataFrame(data=X).to_csv(path_or_buf='features.csv', index=False)
-    pd.DataFrame(data=Y).to_csv(path_or_buf='labels.csv', index=False)
+    pd.DataFrame(data=Y_heavi).to_csv(path_or_buf='labelsHeavi.csv', index=False)
+    pd.DataFrame(data=Y_cat).to_csv(path_or_buf='labelsCat.csv', index=False)
     return X, Y
 
 def import_data():
     features = pd.read_csv('features.csv', low_memory = False)
-    labels = pd.read_csv('labels.csv', low_memory = False)
+    labels = pd.read_csv('labelsCat.csv', low_memory = False)
+    #labels = pd.read_csv('labelsHeavi.csv', low_memory = False)
+
     #print(features.head())
     #X = normalizeData(features)
     #Y = Heavi_transform_label(labels)
@@ -305,7 +313,7 @@ def optim_Adam(lr = 0.001, mom=0.99):
     return optim
 
 #set up layers for baseline model: remove convolutions and set dense layers... Softmax output with 199 dim
-def new_model(optim, d1= 256, d2 =128, d3 =128, d4=128, d5 =128, lo=keras.losses.categorical_crossentropy):
+def new_model(optim, d1= 256, d2 =256, d3 =256, d4=256, d5 =256, lo=keras.losses.categorical_crossentropy):
 
     #models = tf.keras.models
     #layers = tf.keras.layers
@@ -314,19 +322,21 @@ def new_model(optim, d1= 256, d2 =128, d3 =128, d4=128, d5 =128, lo=keras.losses
 
 
     model.add(layers.Dense(d1, activation="relu", input_shape=(47,))) #[features.shape[1]]))
-    model.add(layers.BatchNormalization())
-    # model.add(layers.Flatten())
+    #model.add(layers.BatchNormalization())
+
     model.add(layers.Dense(d2, activation="relu"))
-    model.add(layers.BatchNormalization())
-    #model.add(layers.Flatten())
+    #model.add(layers.BatchNormalization())
+
     model.add(layers.Dense(d3, activation="relu"))
-    model.add(layers.BatchNormalization())
+    #model.add(layers.BatchNormalization())
+
     model.add(layers.Dense(d4, activation="relu"))
-    model.add(layers.BatchNormalization())
-    model.add(layers.Dense(d5, activation="relu"))
-    model.add(layers.BatchNormalization())
+    #model.add(layers.BatchNormalization())
+
+    #model.add(layers.Dense(d5, activation="relu"))
+    #model.add(layers.BatchNormalization())
+
     #Output Layer with softmax activation
-    #model.add(layers.Flatten())
     model.add(layers.Dense(199, activation="softmax"))
     #model.add(layers.Flatten())
     # Compile the model
@@ -339,9 +349,15 @@ def new_model(optim, d1= 256, d2 =128, d3 =128, d4=128, d5 =128, lo=keras.losses
 
 def eval(X, Y):
     optim = optim_SGD(lr = 0.05, mom=0)
-    model = new_model(optim, lo=crps)
 
-    model.fit(x=X,y=Y, epochs=1, validation_split = 0.1, verbose=1) # batch_size=32
+    #Heaviside
+
+    #model = new_model(optim, lo=crps)
+    #model.fit(x=X,y=Y, epochs=1, validation_split = 0.1, verbose=1) # batch_size=32
+
+    #Catecorical
+    model = new_model(optim)
+    model.fit(x=X,y=Y, epochs=1, validation_split = 0.1, verbose=1)
 
 #dont use anymore.
 def sample_test(test_size = 50, alt=False):
