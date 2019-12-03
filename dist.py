@@ -49,7 +49,7 @@ def export_stats(history):
     pass
 
 def load_data():
-    X, Y = pl.process_data()
+    X, Y = pl.import_data()
     X_tr, Y_tr, X_te, Y_te = X, Y, X, Y
     Data = collections.namedtuple('Data', 'x_tr y_tr x_te y_te')
     return Data(X_tr, Y_tr, X_te, Y_te)
