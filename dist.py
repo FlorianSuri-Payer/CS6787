@@ -15,6 +15,7 @@ import statistics
 import io
 import collections
 import sklearn.utils
+import Pipeline as pl
 
 def build_dense_model(input_shape, input_units, layers, outputs, optimizer):
     model = tf.keras.Sequential()
@@ -48,12 +49,8 @@ def export_stats(history):
     pass
 
 def load_data():
-    mnist = tf.keras.datasets.mnist
-    (X_tr, Y_tr), (X_te, Y_te) = mnist.load_data()
-    X_tr = X_tr.reshape(X_tr.shape[0], 28, 28, 1) / 255.0
-    X_te = X_te.reshape(X_te.shape[0], 28, 28, 1) / 255.0
-    Y_tr = tf.keras.utils.to_categorical(Y_tr)
-    Y_te = tf.keras.utils.to_categorical(Y_te)
+    X, Y = pl.process_data()
+    X_tr, Y_tr, X_te, Y_te = X, Y, X, Y
     Data = collections.namedtuple('Data', 'x_tr y_tr x_te y_te')
     return Data(X_tr, Y_tr, X_te, Y_te)
 
@@ -118,7 +115,7 @@ class WeightReceiverHandler(socketserver.BaseRequestHandler):
         self.server.add_connection(idx, self.request)
         print('opened connection from %d' % idx)
         recv_weights(self.request, self.server)
-            
+
 class Server(socketserver.ThreadingTCPServer):
 
     def __init__(self, config, idx, connections):
@@ -135,7 +132,7 @@ class Server(socketserver.ThreadingTCPServer):
 
         self.l_cv = threading.Condition()
         self.lists = []
-    
+
     def start(self):
         self.serve_forever()
 
@@ -154,7 +151,7 @@ class Server(socketserver.ThreadingTCPServer):
         with self.conn_cv:
             self.connections[i] = conn
             self.conn_cv.notify_all()
-    
+
     def received_weights(self, l):
         with self.l_cv:
             self.lists.append(l)
@@ -186,7 +183,7 @@ class Server(socketserver.ThreadingTCPServer):
         for i, c in self.connections.items():
             c.shutdown(socket.SHUT_WR)
         self.shutdown()
-        
+
 def connect_to_worker(config, i, idx):
     host, port = config['workers'][i].split(':')
     port = int(port)
@@ -220,9 +217,10 @@ def main(args):
 
         server.wait_for_connections()
 
+        #plug in here.
         data = load_data()
         optimizer = tf.keras.optimizers.SGD(learning_rate=config['alpha'], momentum=config['beta'], nesterov=False)
-        model = build_dense_model((28, 28, 1), 25, [25, 25, 25], 10, optimizer)
+        model = pl.new_model(optim=optimizer, lo=pl.crps)
 
         tr = SimuParallelSGDTrainer(config, args.worker_idx, server, model, data)
         tr.train()
@@ -241,4 +239,3 @@ if __name__== "__main__":
     parser.add_argument('--worker_idx', type=int, help='index of this worker in config')
     args = parser.parse_args()
     main(args)
-
