@@ -1,9 +1,0 @@
-{
-  "workers":  ["localhost:8000", "localhost:8001"],
-  "alpha": 0.001,
-  "beta": 0.99,
-  "sync_iterations": 10,
-  "batch_size": 32,
-  "epochs": 2,
-  "test_size": 1000
-}
