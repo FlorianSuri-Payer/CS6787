@@ -38,13 +38,14 @@ def export_stats(times, times_net, losses, accuracy, val_accuracy):
 
     matplotlib.pyplot.ylabel('training error')
     matplotlib.pyplot.xlabel('epoch')
-    matplotlib.pyplot.plot(accuracy, '-og')
+
+    matplotlib.pyplot.plot(list(map(lambda x: 1 - x, accuracy)), '-og')
     matplotlib.pyplot.savefig('training_error.png')
     matplotlib.pyplot.clf()
 
     matplotlib.pyplot.ylabel('validation error')
     matplotlib.pyplot.xlabel('epoch')
-    matplotlib.pyplot.plot(val_accuracy, '-ob')
+    matplotlib.pyplot.plot(list(map(lambda x: 1 - x, val_accuracy)), '-og')
     matplotlib.pyplot.savefig('validation_error.png')
     matplotlib.pyplot.clf()
 
@@ -91,23 +92,22 @@ def load_data():
 
 class SGDTrainer:
 
-    def __init__(self, config, idx, model, data):
+    def __init__(self, config, model, data):
         self.config = config
-        self.idx = idx
         self.data = data
         self.model = model
         self.times = []
 
     def train(self):
-        start = time.perf_counter()
-        history = self.model.fit(data.x_tr, data.y_tr, validation_split=self.config['validation_split'],
+        start = time.time()
+        history = self.model.fit(self.data.x_tr, self.data.y_tr,
+            validation_data=(self.data.x_te, self.data.y_te),
             batch_size=self.config['batch_size'], epochs=self.config['epochs'])
-        end = time.perf_counter()
+        end = time.time()
         self.times.append(end - start)
         self.losses = history.history['loss']
-        self.accuracy = list(map(lambda x: 1 - x, history.history['acc']))
-        self.val_accuracy = list(map(lambda x: 1 - x, history.history['val_acc']))
-
+        self.accuracy = history.history['acc']
+        self.val_accuracy = history.history['val_acc']
 
     def get_stats(self):
         return self.times, [], self.losses, self.accuracy, self.val_accuracy
@@ -125,25 +125,31 @@ class SimuParallelSGDTrainer:
         self.times_net = []
         self.losses = []
         self.accuracy = []
+        self.val_losses = []
         self.val_accuracy = []
 
     def train(self):
+        size = len(self.data.x_tr)
+        worker_size = size // len(self.config['workers'])
+        itr_size = worker_size // self.config['sync_iterations']
+        ev = self.model.evaluate(self.data.x_tr, self.data.y_tr)
+        self.losses.append(ev[0])
+        self.accuracy.append(ev[1])
+        ev = self.model.evaluate(self.data.x_te, self.data.y_te)
+        self.val_losses.append(ev[0])
+        self.val_accuracy.append(ev[1])
         for e in range(self.config['epochs']):
             time_net = 0
-            start = time.perf_counter()
-            size = len(self.data.x_tr)
-            worker_size = size // len(self.config['workers'])
-            itr_size = worker_size // self.config['sync_iterations']
+            start = time.time()
             for i in range(self.config['sync_iterations']):
                 start = (self.idx * worker_size) + (i * itr_size)
                 end = start + itr_size
                 x_itr = self.data.x_tr[start:end]
                 y_itr = self.data.y_tr[start:end]
                 # sklearn.utils.shuffle(x_itr, y_itr, random_state=0)
-                history = self.model.fit(x_itr, y_itr, validation_split=0.1,
+                history = self.model.fit(x_itr, y_itr,
                     batch_size=self.config['batch_size'], epochs=1)
-
-                start_net = time.perf_counter()
+                start_net = time.time()
                 self.server.send_weights(0, numpy.array(self.model.get_weights()))
                 if self.idx == 0:
                     all_weights = self.server.wait_and_consume_weights(len(self.config['workers']))
@@ -153,27 +159,28 @@ class SimuParallelSGDTrainer:
                 else:
                     weights = self.server.wait_and_consume_weights(1)[0]
                 self.model.set_weights(weights)
-                end_net = time.perf_counter()
+                end_net = time.time()
                 time_net += end_net - start_net
-            end = time.perf_counter()
+            end = time.time()
             self.times.append(end - start)
             self.times_net.append(time_net)
-            self.losses.extend(history.history['loss'])
-            self.accuracy.extend(list(map(lambda x: 1 - x, history.history['acc'])))
-            self.val_accuracy.extend(list(map(lambda x: 1 - x, history.history['val_acc'])))
+            ev = self.model.evaluate(self.data.x_tr, self.data.y_tr)
+            self.losses.append(ev[0])
+            self.accuracy.append(ev[1])
+            ev = self.model.evaluate(self.data.x_te, self.data.y_te)
+            self.val_losses.append(ev[0])
+            self.val_accuracy.append(ev[1])
 
     def get_stats(self):
-        return self.times, self.times_net, self.losses, self.accuracy, self.val_accuracy
+        return [sum(self.times)], [sum(self.times_net)], self.losses, self.accuracy, self.val_accuracy
 
 
 def recv_weights(sock, server):
     while server.is_running:
-        print('waiting to recv weights...')
         b = sock.recv(4)
         if len(b) == 0:
             break
         n = int.from_bytes(b, byteorder='big')
-        print('receiving %d bytes' % n)
         data = bytearray()
         while len(data) < n:
             packet = sock.recv(n - len(data))
@@ -183,8 +190,6 @@ def recv_weights(sock, server):
         bio = io.BytesIO(data)
         weights = numpy.load(bio, allow_pickle=True)
         server.received_weights(weights)
-
-    print('thread done')
 
 class WeightReceiverHandler(socketserver.BaseRequestHandler):
 
@@ -220,12 +225,6 @@ class Server(socketserver.ThreadingTCPServer):
             while len(self.connections) < len(self.config['workers']) - 1:
                 self.conn_cv.wait()
 
-    def read_data(self, connection):
-        while not self.done:
-            connection.recv(4)
-        print('closing client sock')
-        connection.close()
-
     def add_connection(self, i, conn):
         with self.conn_cv:
             self.connections[i] = conn
@@ -234,7 +233,6 @@ class Server(socketserver.ThreadingTCPServer):
     def received_weights(self, l):
         with self.l_cv:
             self.lists.append(l)
-            print(len(self.lists))
             self.l_cv.notify_all()
 
     def wait_and_consume_weights(self, n):
@@ -252,15 +250,16 @@ class Server(socketserver.ThreadingTCPServer):
             with self.conn_cv:
                 bs = io.BytesIO()
                 numpy.save(bs, weights)
-                print(len(bs.getbuffer()))
                 b = len(bs.getbuffer()).to_bytes(4, byteorder='big')
-                print('sending to %d' % idx)
                 self.connections[idx].sendall(b)
                 self.connections[idx].sendall(bs.getbuffer())
 
     def end(self):
         for i, c in self.connections.items():
-            c.shutdown(socket.SHUT_WR)
+            try:
+                c.shutdown(socket.SHUT_WR)
+            except OSError:
+                print('Socket %d already closed.' % i)
         self.shutdown()
 
 def connect_to_worker(config, i, idx):
@@ -277,24 +276,25 @@ def main(args):
     with open(args.config_file) as f:
         config = json.load(f)
 
-        connections = []
-        for i in range(args.worker_idx):
-            connections.append(connect_to_worker(config, i, args.worker_idx))
+        if not args.local:
+            connections = []
+            for i in range(args.worker_idx):
+                connections.append(connect_to_worker(config, i, args.worker_idx))
 
-        Server.allow_reuse_address = True
-        server = Server(config, args.worker_idx, connections)
+            Server.allow_reuse_address = True
+            server = Server(config, args.worker_idx, connections)
 
-        threads = []
-        for i in range(args.worker_idx):
-            ti = threading.Thread(target=recv_weights, args=(connections[i], server))
-            ti.start()
-            threads.append(ti)
+            threads = []
+            for i in range(args.worker_idx):
+                ti = threading.Thread(target=recv_weights, args=(connections[i], server))
+                ti.start()
+                threads.append(ti)
 
-        t = threading.Thread(target=server.start)
-        t.start()
-        threads.append(t)
+            t = threading.Thread(target=server.start)
+            t.start()
+            threads.append(t)
 
-        server.wait_for_connections()
+            server.wait_for_connections()
 
         #plug in here.
         data = load_data()
@@ -302,21 +302,25 @@ def main(args):
         #model = pl.new_model(optim=optimizer, lo=pl.crps)
         model = pl.new_model(optim=optimizer)
 
-        tr = SimuParallelSGDTrainer(config, args.worker_idx, server, model, data)
+        if args.local:
+            tr = SGDTrainer(config, model, data)     
+        else:
+            tr = SimuParallelSGDTrainer(config, args.worker_idx, server, model, data)
         tr.train()
 
-        print('done training')
+        if not args.local:
+            server.is_running = False
+            server.end()
+            for ti in threads:
+                ti.join()
 
-        server.is_running = False
-        server.end()
-        for ti in threads:
-            ti.join()
-
-        export_stats(*tr.get_stats())
+        if args.local or args.worker_idx == 0:
+            export_stats(*tr.get_stats())
 
 if __name__== "__main__":
     parser = argparse.ArgumentParser(description='Distributed SGD worker.')
     parser.add_argument('--config_file', help='path to json config file')
     parser.add_argument('--worker_idx', type=int, help='index of this worker in config')
+    parser.add_argument('--local', default=False, action='store_true', help='train with local SGD')
     args = parser.parse_args()
     main(args)
