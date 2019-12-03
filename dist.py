@@ -54,6 +54,30 @@ def load_data():
     Data = collections.namedtuple('Data', 'x_tr y_tr x_te y_te')
     return Data(X_tr, Y_tr, X_te, Y_te)
 
+class SGDTrainer:
+
+    def __init__(self, config, idx, model, data):
+        self.config = config
+        self.idx = idx
+        self.data = data
+        self.model = model
+        self.times = []
+
+    def train(self):
+        start = time.perf_counter()
+        history = self.model.fit(data.x_tr, data.y_tr, validation_split=self.config['validation_split'],
+            batch_size=self.config['batch_size'], epochs=self.config['epochs'])
+        end = time.perf_counter()
+        self.times.append(end - start)
+        self.losses = history.history['loss']
+        self.accuracy = list(map(lambda x: 1 - x, history.history['accuracy']))
+        self.val_accuracy = list(map(lambda x: 1 - x, history.history['val_accuracy']))
+
+
+    def get_stats(self):
+        return self.times, [], self.losses, self.accuracy, self.val_accuracy
+
+
 class SimuParallelSGDTrainer:
 
     def __init__(self, config, idx, server, model, data):
@@ -62,30 +86,50 @@ class SimuParallelSGDTrainer:
         self.server = server
         self.data = data
         self.model = model
+        self.times = []
+        self.times_net = []
+        self.losses = []
+        self.accuracy = []
+        self.val_accuracy = []
 
     def train(self):
-        size = len(self.data.x_tr)
-        worker_size = size // len(self.config['workers'])
-        itr_size = worker_size // self.config['sync_iterations']
-        for i in range(self.config['sync_iterations']):
-            start = (self.idx * worker_size) + (i * itr_size)
-            end = start + itr_size
-            x_itr = self.data.x_tr[start:end]
-            y_itr = self.data.y_tr[start:end]
-            # sklearn.utils.shuffle(x_itr, y_itr, random_state=0)
-            self.model.fit(x_itr, y_itr, validation_split=0.1,
-                batch_size=self.config['batch_size'], epochs=1)
+        for e in range(self.config['epochs']):
+            time_net = 0
+            start = time.perf_counter()
+            size = len(self.data.x_tr)
+            worker_size = size // len(self.config['workers'])
+            itr_size = worker_size // self.config['sync_iterations']
+            for i in range(self.config['sync_iterations']):
+                start = (self.idx * worker_size) + (i * itr_size)
+                end = start + itr_size
+                x_itr = self.data.x_tr[start:end]
+                y_itr = self.data.y_tr[start:end]
+                # sklearn.utils.shuffle(x_itr, y_itr, random_state=0)
+                history = self.model.fit(x_itr, y_itr, validation_split=0.1,
+                    batch_size=self.config['batch_size'], epochs=1)
 
-            self.server.send_weights(0, numpy.array(self.model.get_weights()))
-            if self.idx == 0:
-                all_weights = self.server.wait_and_consume_weights(len(self.config['workers']))
-                weights = numpy.mean(all_weights, axis=0)
-                for j in range(1, len(self.config['workers'])):
-                    self.server.send_weights(j, weights)
-            else:
-                weights = self.server.wait_and_consume_weights(1)[0]
-                print(weights)
-            self.model.set_weights(weights)
+                start_net = time.perf_counter()
+                self.server.send_weights(0, numpy.array(self.model.get_weights()))
+                if self.idx == 0:
+                    all_weights = self.server.wait_and_consume_weights(len(self.config['workers']))
+                    weights = numpy.mean(all_weights, axis=0)
+                    for j in range(1, len(self.config['workers'])):
+                        self.server.send_weights(j, weights)
+                else:
+                    weights = self.server.wait_and_consume_weights(1)[0]
+                self.model.set_weights(weights)
+                end_net = time.perf_counter()
+                time_net += end_net - start_net
+            end = time.perf_counter()
+            self.times.append(end - start)
+            self.times_net.append(time_net)
+            self.losses.extend(history.history['loss'])
+            self.accuracy.extend(list(map(lambda x: 1 - x, history.history['accuracy'])))
+            self.val_accuracy.extend(list(map(lambda x: 1 - x, history.history['val_accuracy'])))
+
+    def get_stats(self):
+        return self.times, self.times_net, [], [], []
+
 
 def recv_weights(sock, server):
     while server.is_running:
@@ -226,6 +270,8 @@ def main(args):
         tr.train()
 
         print('done training')
+
+
 
         server.is_running = False
         server.end()
