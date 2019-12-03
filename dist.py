@@ -13,6 +13,8 @@ import numpy
 import enum
 import statistics
 import io
+import collections
+import sklearn.utils
 
 BUFFER_SIZE = 10000
 BATCH_SIZE = 64
@@ -63,7 +65,8 @@ def load_data():
     X_te = X_te.reshape(X_te.shape[0], 28, 28, 1) / 255.0
     Y_tr = tf.keras.utils.to_categorical(Y_tr)
     Y_te = tf.keras.utils.to_categorical(Y_te)
-    return X_tr, Y_tr, X_te, Y_te
+    Data = collections.namedtuple('Data', 'x_tr y_tr x_te y_te')
+    return Data(X_tr, Y_tr, X_te, Y_te)
 
 def make_datasets_unbatched():
     # Scaling MNIST data from (0, 255] to (0., 1.]
@@ -76,46 +79,25 @@ def make_datasets_unbatched():
 
 class SimuParallelSGDTrainer:
 
-    def __init__(self, config, idx, server):
+    def __init__(self, config, idx, server, model, data):
         self.config = config
         self.idx = idx
         self.server = server
-        self.X_tr, self.Y_tr, self.X_te, self.Y_te = load_data()
-        self.optimizer = tf.keras.optimizers.SGD(learning_rate=ALPHA, momentum=BETA, nesterov=False)
-        self.model = build_dense_model((28, 28, 1), 25, [25, 25, 25], 10, self.optimizer)
-        self.model.summary()
-        grad_tensor = tf.keras.backend.gradients(self.model.output, self.model.input)
-        self.grad_fn = tf.keras.backend.function([self.model.input], grad_tensor)
-
-    def get_sample(self, k):
-        rows = numpy.random.choice(self.X_tr.shape[0], k)
-        return self.X_tr[rows, :]
-
-    def get_partitioned_sample(self):
-        return self.get_sample(len(self.X_tr) // len(self.config['workers']))
-
-    def aggregate_gradients(self):
-        self.server.add_list(self.idx, self.grad_fn([self.get_partitioned_sample()]))
-        grads = self.server.wait_and_consume_gradients()
-        # Sum up gradients to compute exact global gradient
-        grad = grads[0][0]
-        for i in range(len(grads)):
-            for j in range(len(grads[i])):
-                if i == 0 and j == 0:
-                    continue
-                grad[j] += grads[i][j]
-        return grad
+        self.data = data
+        self.model = model
 
     def train(self):
-        size = len(self.X_tr)
+        size = len(self.data.x_tr)
         worker_size = size // len(self.config['workers'])
         itr_size = worker_size // self.config['sync_iterations']
         for i in range(self.config['sync_iterations']):
             start = (self.idx * worker_size) + (i * itr_size)
             end = start + itr_size
-            self.model.fit(self.X_tr[start:end], self.Y_tr[start:end],
-                validation_split=0.1, batch_size=self.config['batch_size'],
-                epochs=1)
+            x_itr = self.data.x_tr[start:end]
+            y_itr = self.data.y_tr[start:end]
+            # sklearn.utils.shuffle(x_itr, y_itr, random_state=0)
+            self.model.fit(x_itr, y_itr, validation_split=0.1,
+                batch_size=self.config['batch_size'], epochs=1)
 
             self.server.send_weights(0, numpy.array(self.model.get_weights()))
             if self.idx == 0:
@@ -258,7 +240,11 @@ def main(args):
 
         server.wait_for_connections()
 
-        tr = SimuParallelSGDTrainer(config, args.worker_idx, server)
+        data = load_data()
+        optimizer = tf.keras.optimizers.SGD(learning_rate=config['alpha'], momentum=config['beta'], nesterov=False)
+        model = build_dense_model((28, 28, 1), 25, [25, 25, 25], 10, optimizer)
+
+        tr = SimuParallelSGDTrainer(config, args.worker_idx, server, model, data)
         tr.train()
 
         print('done training')
