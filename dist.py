@@ -28,25 +28,55 @@ def build_dense_model(input_shape, input_units, layers, outputs, optimizer):
             metrics=['accuracy'])
     return model
 
-def export_stats(history):
-    #matplotlib.pyplot.ylabel('training loss')
-    #matplotlib.pyplot.xlabel('epoch')
-    #matplotlib.pyplot.plot(training_loss, '-or')
-    #matplotlib.pyplot.savefig('training_loss.png')
-    #matplotlib.pyplot.clf()
+def export_stats(times, times_net, losses, accuracy, val_accuracy):
+    matplotlib.pyplot.ylabel('training loss')
+    matplotlib.pyplot.xlabel('epoch')
+    matplotlib.pyplot.plot(losses, '-or')
+    matplotlib.pyplot.savefig('training_loss.png')
+    matplotlib.pyplot.clf()
 
-    #matplotlib.pyplot.ylabel('training error')
-    #matplotlib.pyplot.xlabel('epoch')
-    #matplotlib.pyplot.plot(training_error, '-og')
-    #matplotlib.pyplot.savefig('training_error.png')
-    #matplotlib.pyplot.clf()
+    matplotlib.pyplot.ylabel('training error')
+    matplotlib.pyplot.xlabel('epoch')
+    matplotlib.pyplot.plot(accuracy, '-og')
+    matplotlib.pyplot.savefig('training_error.png')
+    matplotlib.pyplot.clf()
 
-    #matplotlib.pyplot.ylabel('validation error')
-    #matplotlib.pyplot.xlabel('epoch')
-    #matplotlib.pyplot.plot(validation_error, '-ob')
-    #matplotlib.pyplot.savefig('validation_error.png')
-    #matplotlib.pyplot.clf()
-    pass
+    matplotlib.pyplot.ylabel('validation error')
+    matplotlib.pyplot.xlabel('epoch')
+    matplotlib.pyplot.plot(val_accuracy, '-ob')
+    matplotlib.pyplot.savefig('validation_error.png')
+    matplotlib.pyplot.clf()
+
+    with open('times.csv', 'w') as f:
+        w = csv.writer(f)
+        epoch = 0
+        for row in times:
+            w.writerow([epoch, row])
+            epoch += 1
+    with open('times_net.csv', 'w') as f:
+        w = csv.writer(f)
+        epoch = 0
+        for row in times_net:
+            w.writerow([epoch, row])
+            epoch += 1
+    with open('losses.csv', 'w') as f:
+        w = csv.writer(f)
+        epoch = 0
+        for row in lossess:
+            w.writerow([epoch, row])
+            epoch += 1
+    with open('accuracy.csv', 'w') as f:
+        w = csv.writer(f)
+        epoch = 0
+        for row in accuracy:
+            w.writerow([epoch, row])
+            epoch += 1
+    with open('val_accuracy.csv', 'w') as f:
+        w = csv.writer(f)
+        epoch = 0
+        for row in val_accuracy:
+            w.writerow([epoch, row])
+            epoch += 1
 
 def load_data():
     X, Y = pl.import_data()
@@ -70,8 +100,8 @@ class SGDTrainer:
         end = time.perf_counter()
         self.times.append(end - start)
         self.losses = history.history['loss']
-        self.accuracy = list(map(lambda x: 1 - x, history.history['accuracy']))
-        self.val_accuracy = list(map(lambda x: 1 - x, history.history['val_accuracy']))
+        self.accuracy = list(map(lambda x: 1 - x, history.history['acc']))
+        self.val_accuracy = list(map(lambda x: 1 - x, history.history['val_acc']))
 
 
     def get_stats(self):
@@ -124,11 +154,11 @@ class SimuParallelSGDTrainer:
             self.times.append(end - start)
             self.times_net.append(time_net)
             self.losses.extend(history.history['loss'])
-            self.accuracy.extend(list(map(lambda x: 1 - x, history.history['accuracy'])))
-            self.val_accuracy.extend(list(map(lambda x: 1 - x, history.history['val_accuracy'])))
+            self.accuracy.extend(list(map(lambda x: 1 - x, history.history['acc'])))
+            self.val_accuracy.extend(list(map(lambda x: 1 - x, history.history['val_acc'])))
 
     def get_stats(self):
-        return self.times, self.times_net, [], [], []
+        return self.times, self.times_net, self.losses, self.accuracy, self.val_accuracy
 
 
 def recv_weights(sock, server):
@@ -271,13 +301,12 @@ def main(args):
 
         print('done training')
 
-
-
         server.is_running = False
         server.end()
         for ti in threads:
             ti.join()
-        #export_stats(history)
+
+        export_stats(*tr.get_stats())
 
 if __name__== "__main__":
     parser = argparse.ArgumentParser(description='Distributed SGD worker.')
