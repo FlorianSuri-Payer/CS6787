@@ -16,13 +16,6 @@ import io
 import collections
 import sklearn.utils
 
-BUFFER_SIZE = 10000
-BATCH_SIZE = 64
-NUM_WORKERS = 2
-GLOBAL_BATCH_SIZE = BATCH_SIZE * NUM_WORKERS
-ALPHA = 0.001
-BETA = 0.99
-
 def build_dense_model(input_shape, input_units, layers, outputs, optimizer):
     model = tf.keras.Sequential()
     model.add(tf.keras.layers.Dense(units=input_units, input_shape=input_shape, activation='relu'))
@@ -33,10 +26,6 @@ def build_dense_model(input_shape, input_units, layers, outputs, optimizer):
     model.compile(loss='categorical_crossentropy', optimizer=optimizer,
             metrics=['accuracy'])
     return model
-
-def train(dataset, model, epochs=1):
-    history = model.fit(x=dataset, epochs=epochs)
-    return history
 
 def export_stats(history):
     #matplotlib.pyplot.ylabel('training loss')
@@ -67,15 +56,6 @@ def load_data():
     Y_te = tf.keras.utils.to_categorical(Y_te)
     Data = collections.namedtuple('Data', 'x_tr y_tr x_te y_te')
     return Data(X_tr, Y_tr, X_te, Y_te)
-
-def make_datasets_unbatched():
-    # Scaling MNIST data from (0, 255] to (0., 1.]
-    def scale(image, label):
-        image = tf.cast(image, tf.float32)
-        image /= 255
-        return image, label
-    datasets, info = tfds.load(name='mnist', with_info=True, as_supervised=True)
-    return datasets['train'].map(scale).cache().shuffle(BUFFER_SIZE)
 
 class SimuParallelSGDTrainer:
 
