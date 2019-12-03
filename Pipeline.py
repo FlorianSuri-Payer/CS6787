@@ -268,13 +268,25 @@ def normalizeData(features):
 def process_data(test_size = 1000):
     data = pd.read_csv('train.csv', low_memory = False)
     print(data.head())
-    features, label = pipeline(data, train=True)
+    features, labels = pipeline(data, train=True)
+
     print(features.head())
     X = normalizeData(features)
-    Y = Heavi_transform_label(label)
+    Y = Heavi_transform_label(labels)
+
+    pd.DataFrame(data=X).to_csv(path_or_buf='features.csv', index=False)
+    pd.DataFrame(data=Y).to_csv(path_or_buf='labels.csv', index=False)
     return X, Y
 
-
+def import_data():
+    features = pd.read_csv('features.csv', low_memory = False)
+    labels = pd.read_csv('labels.csv', low_memory = False)
+    #print(features.head())
+    #X = normalizeData(features)
+    #Y = Heavi_transform_label(labels)
+    X = features.as_matrix()
+    Y = labels.as_matrix()
+    return X, Y
 
 
 
@@ -384,12 +396,12 @@ def alt_C(test_indices):
 
 
 
-#if __name__== "__main__":
-#    X, Y = process_data()
+if __name__== "__main__":
+    X, Y = process_data()
 #    eval(X,Y)
-#    #loss = sample_test(test_size=1000, alt=True)
-#    #print(loss)
-#    #Just use evaluate from model for test set.
+    #loss = sample_test(test_size=1000, alt=True)
+    #print(loss)
+    #Just use evaluate from model for test set.
 #    test_indices = np.random.choice(X.shape[0], 100)
 #    test_score = model.evaluate(X[test_indices], Y[test_indices])
 #    print(test_score)
