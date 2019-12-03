@@ -17,7 +17,7 @@ import collections
 import sklearn.utils
 import Pipeline as pl
 import csv
-
+# ["128.84.167.136:8000", "128.84.167.131:8001"],
 def build_dense_model(input_shape, input_units, layers, outputs, optimizer):
     model = tf.keras.Sequential()
     model.add(tf.keras.layers.Dense(units=input_units, input_shape=input_shape, activation='relu'))
@@ -63,7 +63,7 @@ def export_stats(times, times_net, losses, accuracy, val_accuracy):
     with open('losses.csv', 'w') as f:
         w = csv.writer(f)
         epoch = 0
-        for row in lossess:
+        for row in losses:
             w.writerow([epoch, row])
             epoch += 1
     with open('accuracy.csv', 'w') as f:
@@ -81,7 +81,11 @@ def export_stats(times, times_net, losses, accuracy, val_accuracy):
 
 def load_data():
     X, Y = pl.import_data()
-    X_tr, Y_tr, X_te, Y_te = X, Y, X, Y
+    test_indices = np.random.choice(X.shape[0], self.config['test_size'])
+
+    X_te, Y_te = X[test_indices], Y[test_indices]
+    X_tr, Y_tr = np.delete(X, test_indices, axis = 0), np.delete(Y, test_indices, axis =0)
+
     Data = collections.namedtuple('Data', 'x_tr y_tr x_te y_te')
     return Data(X_tr, Y_tr, X_te, Y_te)
 
@@ -295,7 +299,8 @@ def main(args):
         #plug in here.
         data = load_data()
         optimizer = tf.keras.optimizers.SGD(learning_rate=config['alpha'], momentum=config['beta'], nesterov=False)
-        model = pl.new_model(optim=optimizer, lo=pl.crps)
+        #model = pl.new_model(optim=optimizer, lo=pl.crps)
+        model = pl.new_model(optim=optimizer)
 
         tr = SimuParallelSGDTrainer(config, args.worker_idx, server, model, data)
         tr.train()
