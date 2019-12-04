@@ -109,8 +109,8 @@ class SGDTrainer:
         end = time.time()
         self.times.append(end - start)
         self.losses = history.history['loss']
-        self.accuracy = history.history['acc']
-        self.val_accuracy = history.history['val_acc']
+        self.accuracy = history.history['accuracy']
+        self.val_accuracy = history.history['val_accuracy']
 
     def get_stats(self):
         return self.times, [], self.losses, self.accuracy, self.val_accuracy
