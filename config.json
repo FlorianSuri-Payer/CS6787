@@ -6,7 +6,8 @@
   "sync_iterations": 10,
   "batch_size": 32,
   "epochs": 2,
-  "test_size": 1000,
+  "test_size": 10,
+  "data_size": 100,
   "features_path": "/usr/local/nfl-features.csv",
   "labels_path": "/usr/local/nfl-labels.csv"
 }
