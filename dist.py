@@ -80,12 +80,12 @@ def export_stats(times, times_net, losses, accuracy, val_accuracy):
             w.writerow([epoch, row])
             epoch += 1
 
-def load_data():
-    X, Y = pl.import_data()
-    test_indices = np.random.choice(X.shape[0], self.config['test_size'])
+def load_data(config):
+    X, Y = pl.import_data(config)
+    test_indices = numpy.random.choice(X.shape[0], config['test_size'])
 
     X_te, Y_te = X[test_indices], Y[test_indices]
-    X_tr, Y_tr = np.delete(X, test_indices, axis = 0), np.delete(Y, test_indices, axis =0)
+    X_tr, Y_tr = numpy.delete(X, test_indices, axis = 0), numpy.delete(Y, test_indices, axis =0)
 
     Data = collections.namedtuple('Data', 'x_tr y_tr x_te y_te')
     return Data(X_tr, Y_tr, X_te, Y_te)
