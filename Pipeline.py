@@ -286,8 +286,8 @@ def process_data(test_size = 1000):
 
 def import_data():
     features = pd.read_csv('features.csv', low_memory = False)
-    labels = pd.read_csv('labelsCat.csv', low_memory = False)
-    #labels = pd.read_csv('labelsHeavi.csv', low_memory = False)
+    #labels = pd.read_csv('labelsCat.csv', low_memory = False)
+    labels = pd.read_csv('labelsHeavi.csv', low_memory = False)
 
     #print(features.head())
     #X = normalizeData(features)

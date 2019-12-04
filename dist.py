@@ -299,11 +299,11 @@ def main(args):
         #plug in here.
         data = load_data()
         optimizer = tf.keras.optimizers.SGD(learning_rate=config['alpha'], momentum=config['beta'], nesterov=False)
-        #model = pl.new_model(optim=optimizer, lo=pl.crps)
-        model = pl.new_model(optim=optimizer)
+        model = pl.new_model(optim=optimizer, lo=pl.crps)
+        #model = pl.new_model(optim=optimizer)
 
         if args.local:
-            tr = SGDTrainer(config, model, data)     
+            tr = SGDTrainer(config, model, data)
         else:
             tr = SimuParallelSGDTrainer(config, args.worker_idx, server, model, data)
         tr.train()
