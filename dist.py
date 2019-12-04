@@ -82,6 +82,9 @@ def export_stats(times, times_net, losses, accuracy, val_accuracy):
 
 def load_data(config):
     X, Y = pl.import_data(config)
+    if config['data_size'] != -1:
+        X = X[0:config['data_size']]
+        Y = Y[0:config['data_size']]
     test_indices = numpy.random.choice(X.shape[0], config['test_size'])
 
     X_te, Y_te = X[test_indices], Y[test_indices]
