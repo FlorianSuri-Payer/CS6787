@@ -10,5 +10,6 @@
   "data_size": 100,
   "features_path": "/usr/local/nfl-features.csv",
   "labels_path": "/usr/local/nfl-labels.csv",
-  "out_directory": "experiments/test"
+  "out_directory": "experiments/test",
+  "cloudlab_image": "urn:publicid:IDN+utah.cloudlab.us+image+morty-PG0:morty.psgd"
 }
