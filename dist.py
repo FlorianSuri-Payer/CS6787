@@ -17,6 +17,8 @@ import collections
 import sklearn.utils
 import Pipeline as pl
 import csv
+import os
+
 # ["128.84.167.136:8000", "128.84.167.131:8001"],
 def build_dense_model(input_shape, input_units, layers, outputs, optimizer):
     model = tf.keras.Sequential()

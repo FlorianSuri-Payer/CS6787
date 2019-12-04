@@ -9,5 +9,6 @@
   "test_size": 10,
   "data_size": 100,
   "features_path": "/usr/local/nfl-features.csv",
-  "labels_path": "/usr/local/nfl-labels.csv"
+  "labels_path": "/usr/local/nfl-labels.csv",
+  "out_directory": "experiments/test"
 }
