@@ -29,51 +29,52 @@ def build_dense_model(input_shape, input_units, layers, outputs, optimizer):
             metrics=['accuracy'])
     return model
 
-def export_stats(times, times_net, losses, accuracy, val_accuracy):
+def export_stats(config, times, times_net, losses, accuracy, val_accuracy):
+    os.makedirs(config['out_directory'], exist_ok=True)
     matplotlib.pyplot.ylabel('training loss')
     matplotlib.pyplot.xlabel('epoch')
     matplotlib.pyplot.plot(losses, '-or')
-    matplotlib.pyplot.savefig('training_loss.png')
+    matplotlib.pyplot.savefig(os.path.join(config['out_directory'], 'training_loss.png'))
     matplotlib.pyplot.clf()
 
     matplotlib.pyplot.ylabel('training error')
     matplotlib.pyplot.xlabel('epoch')
 
     matplotlib.pyplot.plot(list(map(lambda x: 1 - x, accuracy)), '-og')
-    matplotlib.pyplot.savefig('training_error.png')
+    matplotlib.pyplot.savefig(os.path.join(config['out_directory'], 'training_error.png'))
     matplotlib.pyplot.clf()
 
     matplotlib.pyplot.ylabel('validation error')
     matplotlib.pyplot.xlabel('epoch')
     matplotlib.pyplot.plot(list(map(lambda x: 1 - x, val_accuracy)), '-og')
-    matplotlib.pyplot.savefig('validation_error.png')
+    matplotlib.pyplot.savefig(os.path.join(config['out_directory'], 'validation_error.png'))
     matplotlib.pyplot.clf()
 
-    with open('times.csv', 'w') as f:
+    with open(os.path.join(config['out_directory'], 'times.csv'), 'w') as f:
         w = csv.writer(f)
         epoch = 0
         for row in times:
             w.writerow([epoch, row])
             epoch += 1
-    with open('times_net.csv', 'w') as f:
+    with open(os.path.join(config['out_directory'], 'times_net.csv'), 'w') as f:
         w = csv.writer(f)
         epoch = 0
         for row in times_net:
             w.writerow([epoch, row])
             epoch += 1
-    with open('losses.csv', 'w') as f:
+    with open(os.path.join(config['out_directory'], 'losses.csv'), 'w') as f:
         w = csv.writer(f)
         epoch = 0
         for row in losses:
             w.writerow([epoch, row])
             epoch += 1
-    with open('accuracy.csv', 'w') as f:
+    with open(os.path.join(config['out_directory'], 'accuracy.csv'), 'w') as f:
         w = csv.writer(f)
         epoch = 0
         for row in accuracy:
             w.writerow([epoch, row])
             epoch += 1
-    with open('val_accuracy.csv', 'w') as f:
+    with open(os.path.join(config['out_directory'], 'val_accuracy.csv'), 'w') as f:
         w = csv.writer(f)
         epoch = 0
         for row in val_accuracy:
@@ -318,7 +319,7 @@ def main(args):
                 ti.join()
 
         if args.local or args.worker_idx == 0:
-            export_stats(*tr.get_stats())
+            export_stats(config, *tr.get_stats())
 
 if __name__== "__main__":
     parser = argparse.ArgumentParser(description='Distributed SGD worker.')
