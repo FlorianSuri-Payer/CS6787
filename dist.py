@@ -297,7 +297,7 @@ def main(args):
             server.wait_for_connections()
 
         #plug in here.
-        data = load_data()
+        data = load_data(config)
         optimizer = tf.keras.optimizers.SGD(learning_rate=config['alpha'], momentum=config['beta'], nesterov=False)
         model = pl.new_model(optim=optimizer, lo=pl.crps)
         #model = pl.new_model(optim=optimizer)
