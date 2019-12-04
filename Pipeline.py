@@ -286,8 +286,8 @@ def process_data(test_size = 1000):
 
 def import_data():
     features = pd.read_csv('features.csv', low_memory = False)
-    #labels = pd.read_csv('labelsCat.csv', low_memory = False)
-    labels = pd.read_csv('labelsHeavi.csv', low_memory = False)
+    labels = pd.read_csv('labelsCat.csv', low_memory = False)
+    #labels = pd.read_csv('labelsHeavi.csv', low_memory = False)
 
     #print(features.head())
     #X = normalizeData(features)
@@ -333,7 +333,7 @@ def new_model(optim, d1= 256, d2 =256, d3 =256, d4=256, d5 =256, lo=keras.losses
     model.add(layers.Dense(d4, activation="relu"))
     #model.add(layers.BatchNormalization())
 
-    #model.add(layers.Dense(d5, activation="relu"))
+    model.add(layers.Dense(d5, activation="relu"))
     #model.add(layers.BatchNormalization())
 
     #Output Layer with softmax activation
