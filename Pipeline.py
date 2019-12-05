@@ -284,18 +284,11 @@ def process_data(test_size = 1000):
     pd.DataFrame(data=Y_cat).to_csv(path_or_buf='labelsCat.csv', index=False)
     return X, Y
 
-<<<<<<< HEAD
-def import_data():
-    features = pd.read_csv('features.csv', low_memory = False)
-    labels = pd.read_csv('labelsCat.csv', low_memory = False)
-    #labels = pd.read_csv('labelsHeavi.csv', low_memory = False)
-=======
+
 def import_data(config):
     features = pd.read_csv(config['features_path'], low_memory = False)
     #labels = pd.read_csv('labelsCat.csv', low_memory = False)
     labels = pd.read_csv(config['labels_path'], low_memory = False)
->>>>>>> d0b8e9b7edfeee883566c3481f17bb8ede900deb
-
     #print(features.head())
     #X = normalizeData(features)
     #Y = Heavi_transform_label(labels)
