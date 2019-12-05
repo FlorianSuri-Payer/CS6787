@@ -18,6 +18,7 @@ import sklearn.utils
 import Pipeline as pl
 import csv
 import os
+import sys
 
 # ["128.84.167.136:8000", "128.84.167.131:8001"],
 def build_dense_model(input_shape, input_units, layers, outputs, optimizer):
@@ -183,19 +184,23 @@ class SimuParallelSGDTrainer:
 
 def recv_weights(sock, server):
     while server.is_running:
-        b = sock.recv(4)
-        if len(b) == 0:
+        try:
+            b = sock.recv(4)
+            if not b or len(b) == 0:
+                break
+            n = int.from_bytes(b, byteorder='big')
+            data = bytearray()
+            while len(data) < n:
+                packet = sock.recv(n - len(data))
+                if not packet or len(packet) == 0:
+                    break
+                data.extend(packet)
+            if len(data) > 0:
+                bio = io.BytesIO(data)
+                weights = numpy.load(bio, allow_pickle=True)
+                server.received_weights(weights)
+        except:
             break
-        n = int.from_bytes(b, byteorder='big')
-        data = bytearray()
-        while len(data) < n:
-            packet = sock.recv(n - len(data))
-            if not packet:
-                return None
-            data.extend(packet)
-        bio = io.BytesIO(data)
-        weights = numpy.load(bio, allow_pickle=True)
-        server.received_weights(weights)
 
 class WeightReceiverHandler(socketserver.BaseRequestHandler):
 
@@ -263,10 +268,12 @@ class Server(socketserver.ThreadingTCPServer):
     def end(self):
         for i, c in self.connections.items():
             try:
-                c.shutdown(socket.SHUT_WR)
+                c.shutdown(socket.SHUT_RDWR)
+                print('Closed socket %d.' % i)
             except OSError:
                 print('Socket %d already closed.' % i)
         self.shutdown()
+        print("Done shutting down.")
 
 def connect_to_worker(config, i, idx):
     host, port = config['workers'][i].split(':')
@@ -314,13 +321,28 @@ def main(args):
             tr = SimuParallelSGDTrainer(config, args.worker_idx, server, model, data)
         tr.train()
 
+        print("Done training.")
+
         if not args.local:
             server.is_running = False
             server.end()
+            for c in connections:
+                try:
+                    c.shutdown(socket.SHUT_RDWR)
+                    print('Closed socket %d.' % i)
+                except OSError:
+                    print('Socket %d already closed.' % i)
+            i = 0
             for ti in threads:
-                ti.join()
+                ti.join(timeout=1)
+                if ti.is_alive():
+                    print("Failed to join thread %d." % i)
+                else:
+                    print("Successfully joined thread %d." % i)
+                i += 1
 
         if args.local or args.worker_idx == 0:
+            print("Exporting stats.")
             export_stats(config, *tr.get_stats())
 
 if __name__== "__main__":
@@ -330,3 +352,4 @@ if __name__== "__main__":
     parser.add_argument('--local', default=False, action='store_true', help='train with local SGD')
     args = parser.parse_args()
     main(args)
+    print("Done.")
