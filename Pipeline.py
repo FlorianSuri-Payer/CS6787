@@ -242,7 +242,7 @@ def pipeline(df, train=False):
         lbdic[c]=lb
         df[c]=lb.transform(df[c].values)
 
-    df = df.sample(frac=1)
+    df = df.sample(frac=1)  #could this lead to overfitting of the validation set?
     #print(df.head)
     if(train):
         features = df.drop(['Yards'], axis=1).copy()
@@ -261,6 +261,9 @@ def Heavi_transform_label(y):
         Y_train[i, yard+99:] = np.ones(shape=(1, 100-yard))
 
     return Y_train
+
+def CDF_transform_label(y):
+    return transform_label(y).cumsum(axis =1)
 
 def normalizeData(features):
     x = features.values #returns a numpy array
@@ -300,7 +303,10 @@ def import_data(config):
 
 #from https://www.kaggle.com/davidcairuz/nfl-neural-network-w-softmax
 def crps(y_true, y_pred):
-    return K.mean(K.square(y_true - K.cumsum(y_pred, axis=1)), axis=1)
+    return K.mean(100*K.square(y_true - K.cumsum(y_pred, axis=1)), axis=1)
+
+def crpsB(y_true, y_pred):
+    return K.mean(100*K.square(K.cumsum(y_true, axis=1) - K.cumsum(y_pred, axis=1)), axis=1)
 
 def optim_SGD(lr = 0.001, mom=0.99):
     #Declare Optimizer
@@ -346,6 +352,31 @@ def new_model(optim, d1= 256, d2 =256, d3 =256, d4=256, d5 =256, lo=keras.losses
 
     return model
 
+def new_modelB(optim, lo=keras.losses.categorical_crossentropy):
+    models = tf.keras.models
+    layers = tf.keras.layers
+    #Instantiate an empty model
+    model = models.Sequential()
+
+
+    model.add(layers.Dense(450, activation="relu", input_shape=(47,))) #[features.shape[1]]))
+    #model.add(layers.BatchNormalization())
+    model.add(layers.Dropout(0.05))
+    # model.add(layers.Flatten())
+    model.add(layers.Dense(600, activation="relu"))
+    model.add(layers.Dropout(0.05))
+    #model.add(layers.BatchNormalization())
+    #model.add(layers.Flatten())
+    model.add(layers.Dense(450, activation="relu"))
+    model.add(layers.Dropout(0.05))
+    #model.add(layers.BatchNormalization())
+    model.add(layers.Dense(199, activation="softmax"))
+    #model.add(layers.Flatten())
+    # Compile the model
+    #model.compile(loss=lo, optimizer=optim, metrics=["accuracy"])
+    model.compile(loss=lo, optimizer=optim, metrics=[tf.keras.metrics.CategoricalAccuracy()])
+
+    return model
 
 def eval(X, Y):
     optim = optim_SGD(lr = 0.05, mom=0)
@@ -409,7 +440,10 @@ def alt_C(test_indices):
     C *= 1/(199*test_indices.size)
     return C
 
-
+def model_prediction(model, play_idx, X, Y):
+    inter = np.array([X[play_idx]])
+    print("True yardage:", np.argmax(Y[play_idx])-99)
+    print("Predicted yardage:", np.argmax(model.predict(inter))-99)
 
 
 if __name__== "__main__":
