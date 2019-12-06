@@ -97,18 +97,82 @@ def load_data(config):
     Data = collections.namedtuple('Data', 'x_tr y_tr x_te y_te')
     return Data(X_tr, Y_tr, X_te, Y_te)
 
+class EarlyStoppingTime(tf.keras.callbacks.Callback):
+
+    def __init__(self, monitor='val_loss', target_time=0):
+        super(EarlyStoppingTime, self).__init__()
+        self.target_time = target_time
+        self.stopped_epoch = 0
+
+    def on_train_begin(self, logs=None):
+        self.start = time.time()
+        self.stopped_epoch = 0
+
+    def on_epoch_end(self, epoch, logs=None):
+        now = time.time()
+        if (now - self.start) > self.target_time:
+            self.stopped_epoch = epoch
+            self.model.stop_training = True
+
+    def on_train_end(self, logs=None):
+        if self.stopped_epoch > 0 and self.verbose > 0:
+            print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
+
+class EarlyStoppingMonitorThreshold(tf.keras.callbacks.Callback):
+
+    def __init__(self, monitor='val_loss', target_value=0, verbose=0):
+        super(EarlyStoppingMonitorThreshold, self).__init__()
+
+        self.monitor = monitor
+        self.target_value = target_value
+        self.verbose = verbose
+        self.wait = 0
+        self.stopped_epoch = 0
+
+    def on_train_begin(self, logs=None):
+        # Allow instances to be re-used
+        self.wait = 0
+        self.stopped_epoch = 0
+
+    def on_epoch_end(self, epoch, logs=None):
+        current = self.get_monitor_value(logs)
+        if current is None:
+            return
+        if current < self.target_value:
+            self.stopped_epoch = epoch
+            self.model.stop_training = True
+
+    def on_train_end(self, logs=None):
+        if self.stopped_epoch > 0 and self.verbose > 0:
+            print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
+
+    def get_monitor_value(self, logs):
+        logs = logs or {}
+        monitor_value = logs.get(self.monitor)
+        if monitor_value is None:
+            logging.warning('Early stopping conditioned on metric `%s` '
+                'which is not available. Available metrics are: %s',
+                self.monitor, ','.join(list(logs.keys())))
+        return monitor_value
+
 class SGDTrainer:
 
-    def __init__(self, config, model, data):
+    def __init__(self, config, model, data, scheduler):
         self.config = config
         self.data = data
         self.model = model
         self.times = []
+        self.scheduler = scheduler
 
     def train(self):
         start = time.time()
+        cb = [self.scheduler]
+        if self.config['early_stopping_loss'] != -1:
+            cb.append(EarlyStoppingMonitorThreshold(target_value=self.config['early_stopping_loss']))
+        if self.config['early_stopping_time'] != -1:
+            cb.append(EarlyStoppingTime(target_time=self.config['early_stopping_time']))
         history = self.model.fit(self.data.x_tr, self.data.y_tr,
-            validation_data=(self.data.x_te, self.data.y_te),
+            validation_data=(self.data.x_te, self.data.y_te), callbacks=cb,
             batch_size=self.config['batch_size'], epochs=self.config['epochs'])
         end = time.time()
         self.times.append(end - start)
@@ -122,7 +186,7 @@ class SGDTrainer:
 
 class SimuParallelSGDTrainer:
 
-    def __init__(self, config, idx, server, model, data):
+    def __init__(self, config, idx, server, model, data, scheduler):
         self.config = config
         self.idx = idx
         self.server = server
@@ -134,6 +198,7 @@ class SimuParallelSGDTrainer:
         self.accuracy = []
         self.val_losses = []
         self.val_accuracy = []
+        self.scheduler = scheduler
 
     def train(self):
         size = len(self.data.x_tr)
@@ -145,6 +210,7 @@ class SimuParallelSGDTrainer:
         ev = self.model.evaluate(self.data.x_te, self.data.y_te)
         self.val_losses.append(ev[0])
         self.val_accuracy.append(ev[1])
+        train_start = time.time()
         for e in range(self.config['epochs']):
             time_net = 0
             start = time.time()
@@ -154,8 +220,8 @@ class SimuParallelSGDTrainer:
                 x_itr = self.data.x_tr[start:end]
                 y_itr = self.data.y_tr[start:end]
                 # sklearn.utils.shuffle(x_itr, y_itr, random_state=0)
-                history = self.model.fit(x_itr, y_itr,
-                    batch_size=self.config['batch_size'], epochs=1)
+                history = self.model.fit(x_itr, y_itr, initial_epoch=e, callbacks=[self.scheduler],
+                    batch_size=self.config['batch_size'], epochs=e+1)
                 start_net = time.time()
                 self.server.send_weights(0, numpy.array(self.model.get_weights()))
                 if self.idx == 0:
@@ -177,6 +243,11 @@ class SimuParallelSGDTrainer:
             ev = self.model.evaluate(self.data.x_te, self.data.y_te)
             self.val_losses.append(ev[0])
             self.val_accuracy.append(ev[1])
+            if self.config['early_stopping_loss'] != -1 and ev[0] < self.config['early_stopping_loss']:
+                break
+            now = time.time()
+            if self.config['early_stopping_time'] != -1 and now - train_start > self.config['early_stopping_time']:
+                break
 
     def get_stats(self):
         return [sum(self.times)], [sum(self.times_net)], self.losses, self.accuracy, self.val_accuracy
@@ -312,14 +383,17 @@ def main(args):
         #plug in here.
         data = load_data(config)
         optimizer = tf.keras.optimizers.SGD(learning_rate=config['alpha'], momentum=config['beta'], nesterov=False)
-        optimizerB = tf.keras.optimizers.Adam()
-        model = pl.new_model(optim=optimizer, lo=pl.crpsB)
+        model = pl.new_model(optim=optimizer, lo=pl.crps)
         #model = pl.new_model(optim=optimizer)
 
+        def scheduler(epoch):
+            return 0.01 * (0.96**epoch)
+        sched = tf.keras.callbacks.LearningRateScheduler(scheduler)
+
         if args.local:
-            tr = SGDTrainer(config, model, data)
+            tr = SGDTrainer(config, model, data, sched)
         else:
-            tr = SimuParallelSGDTrainer(config, args.worker_idx, server, model, data)
+            tr = SimuParallelSGDTrainer(config, args.worker_idx, server, model, data, sched)
         tr.train()
 
         print("Done training.")
