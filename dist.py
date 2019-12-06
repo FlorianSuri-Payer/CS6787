@@ -32,7 +32,7 @@ def build_dense_model(input_shape, input_units, layers, outputs, optimizer):
             metrics=['accuracy'])
     return model
 
-def export_stats(config, times, times_net, losses, accuracy, val_accuracy):
+def export_stats(config, times, times_net, losses, accuracy, val_losses):
     os.makedirs(config['out_directory'], exist_ok=True)
     matplotlib.pyplot.ylabel('training loss')
     matplotlib.pyplot.xlabel('epoch')
@@ -47,9 +47,9 @@ def export_stats(config, times, times_net, losses, accuracy, val_accuracy):
     matplotlib.pyplot.savefig(os.path.join(config['out_directory'], 'training_error.png'))
     matplotlib.pyplot.clf()
 
-    matplotlib.pyplot.ylabel('validation error')
+    matplotlib.pyplot.ylabel('validation loss')
     matplotlib.pyplot.xlabel('epoch')
-    matplotlib.pyplot.plot(list(map(lambda x: 1 - x, val_accuracy)), '-og')
+    matplotlib.pyplot.plot(val_losses, '-og')
     matplotlib.pyplot.savefig(os.path.join(config['out_directory'], 'validation_error.png'))
     matplotlib.pyplot.clf()
 
@@ -77,10 +77,10 @@ def export_stats(config, times, times_net, losses, accuracy, val_accuracy):
         for row in accuracy:
             w.writerow([epoch, row])
             epoch += 1
-    with open(os.path.join(config['out_directory'], 'val_accuracy.csv'), 'w') as f:
+    with open(os.path.join(config['out_directory'], 'val_losses.csv'), 'w') as f:
         w = csv.writer(f)
         epoch = 0
-        for row in val_accuracy:
+        for row in val_losses:
             w.writerow([epoch, row])
             epoch += 1
 
@@ -163,6 +163,9 @@ class SGDTrainer:
         self.model = model
         self.times = []
         self.scheduler = scheduler
+        self.losses = []
+        self.accuracy = []
+        self.val_losses = []
 
     def train(self):
         start = time.time()
@@ -171,17 +174,20 @@ class SGDTrainer:
             cb.append(EarlyStoppingMonitorThreshold(target_value=self.config['early_stopping_loss']))
         if self.config['early_stopping_time'] != -1:
             cb.append(EarlyStoppingTime(target_time=self.config['early_stopping_time']))
+        ev = self.model.evaluate(self.data.x_tr, self.data.y_tr)
+        self.losses.append(ev[0])
+        self.accuracy.append(ev[1])
         history = self.model.fit(self.data.x_tr, self.data.y_tr,
             validation_data=(self.data.x_te, self.data.y_te), callbacks=cb,
             batch_size=self.config['batch_size'], epochs=self.config['epochs'])
         end = time.time()
         self.times.append(end - start)
-        self.losses = history.history['loss']
-        self.accuracy = history.history['accuracy']
-        self.val_accuracy = history.history['val_accuracy']
+        self.losses.extend(history.history['loss'])
+        self.accuracy.extend(history.history['accuracy'])
+        self.val_losses.extend(history.history['val_loss'])
 
     def get_stats(self):
-        return self.times, [], self.losses, self.accuracy, self.val_accuracy
+        return self.times, [], self.losses, self.accuracy, self.val_losses
 
 
 class SimuParallelSGDTrainer:
@@ -250,7 +256,7 @@ class SimuParallelSGDTrainer:
                 break
 
     def get_stats(self):
-        return [sum(self.times)], [sum(self.times_net)], self.losses, self.accuracy, self.val_accuracy
+        return [sum(self.times)], [sum(self.times_net)], self.losses, self.accuracy, self.val_losses
 
 
 def recv_weights(sock, server):
@@ -387,7 +393,7 @@ def main(args):
         #model = pl.new_model(optim=optimizer)
 
         def scheduler(epoch):
-            return 0.01 * (0.96**epoch)
+            return config['alpha'] * (0.96**epoch)
         sched = tf.keras.callbacks.LearningRateScheduler(scheduler)
 
         if args.local:
