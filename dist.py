@@ -312,8 +312,9 @@ def main(args):
         #plug in here.
         data = load_data(config)
         optimizer = tf.keras.optimizers.SGD(learning_rate=config['alpha'], momentum=config['beta'], nesterov=False)
-        #model = pl.new_model(optim=optimizer, lo=pl.crps)
-        model = pl.new_model(optim=optimizer)
+        optimizerB = tf.keras.optimizers.Adam()
+        model = pl.new_model(optim=optimizer, lo=pl.crpsB)
+        #model = pl.new_model(optim=optimizer)
 
         if args.local:
             tr = SGDTrainer(config, model, data)
