@@ -1,5 +1,11 @@
 source experiments/common.sh
 
+## Local SGD
+remote 'r' 'killall -9 python3'
+remote 'r' 'python3 dist.py --config_file experiments/e2/sgd.json --local &> log.out'
+##
+exit
+
 ## Parallel SGD 2
 remote 'r' 'killall -9 python3'
 remote 'client-0-0' 'killall -9 python3'

@@ -115,7 +115,7 @@ class EarlyStoppingTime(tf.keras.callbacks.Callback):
             self.model.stop_training = True
 
     def on_train_end(self, logs=None):
-        if self.stopped_epoch > 0 and self.verbose > 0:
+        if self.stopped_epoch > 0:
             print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
 
 class EarlyStoppingMonitorThreshold(tf.keras.callbacks.Callback):
