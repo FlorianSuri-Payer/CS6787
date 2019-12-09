@@ -1,6 +1,5 @@
 source experiments/common.sh
 
-if false; then
 ## Parallel SGD 1
 remote 'r' 'killall -9 python3'
 
@@ -117,7 +116,6 @@ sleep 0.7
 remote 'client-0-5' 'python3 dist.py --config_file experiments/e4/psgd7.json --worker_idx 6' &
 wait $master
 ##
-fi
 
 ## Parallel SGD 8
 remote 'r' 'killall -9 python3'

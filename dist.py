@@ -102,22 +102,22 @@ class EarlyStoppingTime(tf.keras.callbacks.Callback):
     def __init__(self, monitor='val_loss', target_time=0):
         super(EarlyStoppingTime, self).__init__()
         self.target_time = target_time
-        self.stopped_epoch = 0
+        self.stopped_batch = 0
 
     def on_train_begin(self, logs=None):
         self.start = time.time()
-        self.stopped_epoch = 0
+        self.stopped_batch = 0
 
-    def on_epoch_end(self, epoch, logs=None):
+    def on_train_batch_end(self, batch, logs=None):
         now = time.time()
         if (now - self.start) > self.target_time:
             print('Stopping after %d seconds.' % int(now - self.start))
-            self.stopped_epoch = epoch
+            self.stopped_batch = batch
             self.model.stop_training = True
 
     def on_train_end(self, logs=None):
-        if self.stopped_epoch > 0:
-            print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
+        if self.stopped_batch > 0:
+            print('Epoch %05d: early stopping' % (self.stopped_batch + 1))
 
 class EarlyStoppingMonitorThreshold(tf.keras.callbacks.Callback):
 
@@ -128,24 +128,24 @@ class EarlyStoppingMonitorThreshold(tf.keras.callbacks.Callback):
         self.target_value = target_value
         self.verbose = verbose
         self.wait = 0
-        self.stopped_epoch = 0
+        self.stopped_batch = 0
 
     def on_train_begin(self, logs=None):
         # Allow instances to be re-used
         self.wait = 0
-        self.stopped_epoch = 0
+        self.stopped_batch = 0
 
-    def on_epoch_end(self, epoch, logs=None):
+    def on_train_batch_end(self, batch, logs=None):
         current = self.get_monitor_value(logs)
         if current is None:
             return
         if current < self.target_value:
-            self.stopped_epoch = epoch
+            self.stopped_batch = batch
             self.model.stop_training = True
 
     def on_train_end(self, logs=None):
-        if self.stopped_epoch > 0 and self.verbose > 0:
-            print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
+        if self.stopped_batch > 0 and self.verbose > 0:
+            print('Epoch %05d: early stopping' % (self.stopped_batch + 1))
 
     def get_monitor_value(self, logs):
         logs = logs or {}
@@ -185,7 +185,11 @@ class SGDTrainer:
         self.times.append(end - start)
         self.losses.extend(history.history['loss'])
         self.accuracy.extend(history.history['accuracy'])
-        self.val_losses.extend(history.history['val_loss'])
+        if 'val_loss' in history.history:
+            self.val_losses.extend(history.history['val_loss'])
+        else:
+            ev = self.model.evaluate(self.data.x_te, self.data.y_te)
+            self.val_losses.append(ev[0])
 
     def get_stats(self):
         return self.times, [], self.losses, self.accuracy, self.val_losses
@@ -227,8 +231,21 @@ class SimuParallelSGDTrainer:
                 x_itr = self.data.x_tr[start:end]
                 y_itr = self.data.y_tr[start:end]
                 # sklearn.utils.shuffle(x_itr, y_itr, random_state=0)
-                history = self.model.fit(x_itr, y_itr, initial_epoch=e, callbacks=[self.scheduler],
-                    batch_size=self.config['batch_size'], epochs=e+1)
+                cb = [self.scheduler]
+                esmt = None
+                est = None
+                if self.config['early_stopping_loss'] != -1:
+                    esmt = EarlyStoppingMonitorThreshold(target_value=self.config['early_stopping_loss'])
+                    cb.append(esmt)
+                if self.config['early_stopping_time'] != -1:
+                    est = EarlyStoppingTime(target_time=self.config['early_stopping_time']-(time.time() - start_time)-sum(self.times))
+                    cb.append(est)
+                history = self.model.fit(x_itr, y_itr, initial_epoch=e, callbacks=cb,
+                        batch_size=self.config['batch_size'], epochs=e+1)
+                if esmt != None and esmt.stopped_batch > 0:
+                    break
+                if est != None and est.stopped_batch > 0:
+                    break
                 start_net = time.time()
                 self.server.send_weights(0, numpy.array(self.model.get_weights()))
                 if self.idx == 0:
