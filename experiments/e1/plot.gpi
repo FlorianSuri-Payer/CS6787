@@ -1,0 +1,18 @@
+set datafile separator ','
+set title ""
+set key top right
+set xlabel 'Epoch'
+set ylabel 'Training Loss'
+set terminal pdf size 4,3 enhanced dashed font 'DejaVu Sans,12'
+set output 'plot.pdf'
+set style line 1 linetype 1 linecolor "red" linewidth 2 dashtype 1
+set style line 2 linetype 4 linecolor "green" linewidth 2 dashtype 2
+set style line 3 linetype 3 linecolor "blue" linewidth 2 dashtype 5
+set style line 4 linetype 2 linecolor "orange" linewidth 2 dashtype 4
+set xtics 0,1,4
+set yrange [0:10]
+set ytics 1
+plot 'sgd/losses.csv' title "SGD" ls 1 with linespoints, \
+'psgd1/losses.csv' title "SP-SGD_2" ls 2 with linespoints, \
+'psgd2/losses.csv' title "SP-SGD_{200}" ls 3 with linespoints, \
+'psgd10/losses.csv' title "SP-SGD_{450}" ls 4 with linespoints

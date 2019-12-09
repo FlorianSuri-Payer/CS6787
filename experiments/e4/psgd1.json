@@ -1,14 +1,18 @@
 {
-  "workers": ["r:8000"],
-  "alpha": 0.05,
-  "beta": 0.99,
-  "sync_iterations": 1,
-  "batch_size": 32,
-  "epochs": 2,
-  "test_size": 10,
-  "data_size": 100,
+  "workers": [
+    "r:8000"
+  ],
+  "alpha": 0.001,
+  "beta": 0.9,
+  "sync_iterations": 450,
+  "batch_size": 256,
+  "epochs": 4,
+  "test_size": 1000,
+  "data_size": -1,
   "features_path": "/usr/local/nfl-features.csv",
   "labels_path": "/usr/local/nfl-labels.csv",
   "out_directory": "experiments/e4/psgd1",
-  "cloudlab_image": "urn:publicid:IDN+utah.cloudlab.us+image+morty-PG0:morty.psgd"
+  "cloudlab_image": "urn:publicid:IDN+utah.cloudlab.us+image+morty-PG0:morty.psgd",
+  "early_stopping_time": -1,
+  "early_stopping_loss": -1
 }

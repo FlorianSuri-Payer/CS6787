@@ -1,7 +1,7 @@
 {
   "workers": ["r:8000", "client-0-0:8000", "client-0-1:8000", "client-0-2:8000"],
   "alpha": 0.001,
-  "beta": 0.99,
+  "beta": 0.9,
   "sync_iterations": 450,
   "batch_size": 256,
   "epochs": 4,
@@ -11,6 +11,6 @@
   "labels_path": "/usr/local/nfl-labels.csv",
   "out_directory": "experiments/e2/psgd10",
   "cloudlab_image": "urn:publicid:IDN+utah.cloudlab.us+image+morty-PG0:morty.psgd",
-  "early_stopping_time": 300,
+  "early_stopping_time": 90,
   "early_stopping_loss": -1
 }
