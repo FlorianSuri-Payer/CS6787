@@ -219,7 +219,7 @@ class SimuParallelSGDTrainer:
         train_start = time.time()
         for e in range(self.config['epochs']):
             time_net = 0
-            start = time.time()
+            start_time = time.time()
             for i in range(self.config['sync_iterations']):
                 start = (self.idx * worker_size) + (i * itr_size)
                 end = start + itr_size
@@ -241,7 +241,7 @@ class SimuParallelSGDTrainer:
                 end_net = time.time()
                 time_net += end_net - start_net
             end = time.time()
-            self.times.append(end - start)
+            self.times.append(end - start_time)
             self.times_net.append(time_net)
             ev = self.model.evaluate(self.data.x_tr, self.data.y_tr)
             self.losses.append(ev[0])
@@ -388,6 +388,7 @@ def main(args):
 
         #plug in here.
         data = load_data(config)
+        print('Done loading data.')
         optimizer = tf.keras.optimizers.SGD(learning_rate=config['alpha'], momentum=config['beta'], nesterov=False)
         model = pl.new_model(optim=optimizer, lo=pl.crps)
         #model = pl.new_model(optim=optimizer)
