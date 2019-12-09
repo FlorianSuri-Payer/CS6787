@@ -111,6 +111,7 @@ class EarlyStoppingTime(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         now = time.time()
         if (now - self.start) > self.target_time:
+            print('Stopping after %d seconds.' % int(now - self.start))
             self.stopped_epoch = epoch
             self.model.stop_training = True
 
@@ -168,7 +169,6 @@ class SGDTrainer:
         self.val_losses = []
 
     def train(self):
-        start = time.time()
         cb = [self.scheduler]
         if self.config['early_stopping_loss'] != -1:
             cb.append(EarlyStoppingMonitorThreshold(target_value=self.config['early_stopping_loss']))
@@ -177,6 +177,7 @@ class SGDTrainer:
         ev = self.model.evaluate(self.data.x_tr, self.data.y_tr)
         self.losses.append(ev[0])
         self.accuracy.append(ev[1])
+        start = time.time()
         history = self.model.fit(self.data.x_tr, self.data.y_tr,
             validation_data=(self.data.x_te, self.data.y_te), callbacks=cb,
             batch_size=self.config['batch_size'], epochs=self.config['epochs'])
