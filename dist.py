@@ -111,7 +111,7 @@ class EarlyStoppingTime(tf.keras.callbacks.Callback):
     def on_train_batch_end(self, batch, logs=None):
         now = time.time()
         if (now - self.start) > self.target_time:
-            print('Stopping after %d seconds.' % int(now - self.start))
+            print('Stopping after %f seconds.' % int(now - self.start))
             self.stopped_batch = batch
             self.model.stop_training = True
 
@@ -174,7 +174,7 @@ class SGDTrainer:
             cb.append(EarlyStoppingMonitorThreshold(target_value=self.config['early_stopping_loss']))
         if self.config['early_stopping_time'] != -1:
             cb.append(EarlyStoppingTime(target_time=self.config['early_stopping_time']))
-        ev = self.model.evaluate(self.data.x_tr, self.data.y_tr)
+        ev = self.model.evaluate(self.data.x_tr, self.data.y_tr, verbose=False)
         self.losses.append(ev[0])
         self.accuracy.append(ev[1])
         start = time.time()
@@ -188,7 +188,7 @@ class SGDTrainer:
         if 'val_loss' in history.history:
             self.val_losses.extend(history.history['val_loss'])
         else:
-            ev = self.model.evaluate(self.data.x_te, self.data.y_te)
+            ev = self.model.evaluate(self.data.x_te, self.data.y_te, verbose=False)
             self.val_losses.append(ev[0])
 
     def get_stats(self):
@@ -215,13 +215,12 @@ class SimuParallelSGDTrainer:
         size = len(self.data.x_tr)
         worker_size = size // len(self.config['workers'])
         itr_size = worker_size // self.config['sync_iterations']
-        ev = self.model.evaluate(self.data.x_tr, self.data.y_tr)
+        ev = self.model.evaluate(self.data.x_tr, self.data.y_tr, verbose=False)
         self.losses.append(ev[0])
         self.accuracy.append(ev[1])
-        ev = self.model.evaluate(self.data.x_te, self.data.y_te)
+        ev = self.model.evaluate(self.data.x_te, self.data.y_te, verbose=False)
         self.val_losses.append(ev[0])
         self.val_accuracy.append(ev[1])
-        train_start = time.time()
         for e in range(self.config['epochs']):
             time_net = 0
             start_time = time.time()
@@ -243,8 +242,10 @@ class SimuParallelSGDTrainer:
                 history = self.model.fit(x_itr, y_itr, initial_epoch=e, callbacks=cb,
                         batch_size=self.config['batch_size'], epochs=e+1)
                 if esmt != None and esmt.stopped_batch > 0:
+                    print('Stopping itr loop early.')
                     break
-                if est != None and est.stopped_batch > 0:
+                if est != None and est.stopped_batch > 0 or self.config['early_stopping_time'] != -1 and (time.time() - start_time) + sum(self.times) > self.config['early_stopping_time']:
+                    print('Stopping itr loop early.')
                     break
                 start_net = time.time()
                 self.server.send_weights(0, numpy.array(self.model.get_weights()))
@@ -261,16 +262,17 @@ class SimuParallelSGDTrainer:
             end = time.time()
             self.times.append(end - start_time)
             self.times_net.append(time_net)
-            ev = self.model.evaluate(self.data.x_tr, self.data.y_tr)
+            ev = self.model.evaluate(self.data.x_tr, self.data.y_tr, verbose=False)
             self.losses.append(ev[0])
             self.accuracy.append(ev[1])
-            ev = self.model.evaluate(self.data.x_te, self.data.y_te)
+            ev = self.model.evaluate(self.data.x_te, self.data.y_te, verbose=False)
             self.val_losses.append(ev[0])
             self.val_accuracy.append(ev[1])
             if self.config['early_stopping_loss'] != -1 and ev[0] < self.config['early_stopping_loss']:
                 break
             now = time.time()
-            if self.config['early_stopping_time'] != -1 and now - train_start > self.config['early_stopping_time']:
+            if self.config['early_stopping_time'] != -1 and sum(self.times) > self.config['early_stopping_time']:
+                print('Stopping epoch loop early after %fs.' % sum(self.times))
                 break
 
     def get_stats(self):

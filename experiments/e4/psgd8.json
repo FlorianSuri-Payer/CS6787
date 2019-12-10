@@ -11,7 +11,7 @@
   ],
   "alpha": 0.001,
   "beta": 0.9,
-  "sync_iterations": 450,
+  "sync_iterations": 2,
   "batch_size": 256,
   "epochs": 4,
   "test_size": 1000,
