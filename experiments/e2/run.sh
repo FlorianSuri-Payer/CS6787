@@ -1,6 +1,5 @@
 source experiments/common.sh
 
-if false; then
 ## Local SGD
 remote 'r' 'killall -9 python3'
 remote 'r' 'python3 dist.py --config_file experiments/e2/sgd.json --local &> log.out'
@@ -39,8 +38,8 @@ sleep 0.7
 remote 'client-0-2' 'python3 dist.py --config_file experiments/e2/psgd200.json --worker_idx 3 &> log.out' &
 wait $master
 ##
-fi
 
+if false; then
 ## Parallel SGD 450
 remote 'r' 'killall -9 python3'
 remote 'client-0-0' 'killall -9 python3'
@@ -57,5 +56,6 @@ sleep 0.7
 remote 'client-0-2' 'python3 dist.py --config_file experiments/e2/psgd450.json --worker_idx 3 &> log.out' &
 wait $master
 ##
+fi
 
 bash experiments/retrieve.sh

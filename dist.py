@@ -239,6 +239,9 @@ class SimuParallelSGDTrainer:
                 if self.config['early_stopping_time'] != -1:
                     est = EarlyStoppingTime(target_time=self.config['early_stopping_time']-(time.time() - start_time)-sum(self.times))
                     cb.append(est)
+                if self.config['early_stopping_time'] != -1 and (time.time() - start_time) + sum(self.times) > self.config['early_stopping_time']:
+                    print('Stopping itr loop early.')
+                    break
                 history = self.model.fit(x_itr, y_itr, initial_epoch=e, callbacks=cb,
                         batch_size=self.config['batch_size'], epochs=e+1)
                 if esmt != None and esmt.stopped_batch > 0:
@@ -255,7 +258,11 @@ class SimuParallelSGDTrainer:
                     for j in range(1, len(self.config['workers'])):
                         self.server.send_weights(j, weights)
                 else:
-                    weights = self.server.wait_and_consume_weights(1)[0]
+                    weights_a = self.server.wait_and_consume_weights(1)
+                    if len(weights_a) > 0:
+                        weights = weights_a[0]
+                    else:
+                        break
                 self.model.set_weights(weights)
                 end_net = time.time()
                 time_net += end_net - start_net
@@ -276,7 +283,7 @@ class SimuParallelSGDTrainer:
                 break
 
     def get_stats(self):
-        return [sum(self.times)], [sum(self.times_net)], self.losses, self.accuracy, self.val_losses
+        return self.times, self.times_net, self.losses, self.accuracy, self.val_losses
 
 
 def recv_weights(sock, server):
@@ -298,6 +305,10 @@ def recv_weights(sock, server):
                 server.received_weights(weights)
         except:
             break
+    server.is_running = False
+    server.end()
+    with server.l_cv:
+        server.l_cv.notify_all()
 
 class WeightReceiverHandler(socketserver.BaseRequestHandler):
 
@@ -345,7 +356,7 @@ class Server(socketserver.ThreadingTCPServer):
 
     def wait_and_consume_weights(self, n):
         with self.l_cv:
-            while len(self.lists) < n:
+            while self.is_running and len(self.lists) < n:
                 self.l_cv.wait()
             lists = [l for l in self.lists]
             self.lists = []
@@ -359,8 +370,11 @@ class Server(socketserver.ThreadingTCPServer):
                 bs = io.BytesIO()
                 numpy.save(bs, weights)
                 b = len(bs.getbuffer()).to_bytes(4, byteorder='big')
-                self.connections[idx].sendall(b)
-                self.connections[idx].sendall(bs.getbuffer())
+                try:
+                    self.connections[idx].sendall(b)
+                    self.connections[idx].sendall(bs.getbuffer())
+                except OSError:
+                    print('Failed to send weights.')
 
     def end(self):
         for i, c in self.connections.items():
